@@ -10,6 +10,7 @@ import { Report, ReportSchema } from '@/schemas/report.schema';
 import { User } from '@/entities/user.entity';
 import { UserProfile } from '@/entities/user-profile.entity';
 import { College } from '@/entities/college.entity';
+import { Moderator } from '@/entities/moderator.entity';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { College } from '@/entities/college.entity';
       { name: Like.name, schema: LikeSchema },
       { name: Report.name, schema: ReportSchema },
     ]),
-    TypeOrmModule.forFeature([User, UserProfile, College]),
+    TypeOrmModule.forFeature([User, UserProfile, College, Moderator]),
   ],
   controllers: [PostController],
   providers: [PostService],

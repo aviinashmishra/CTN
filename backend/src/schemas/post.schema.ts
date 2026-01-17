@@ -46,6 +46,27 @@ export class Post {
 
   @Prop({ default: false })
   isDeleted: boolean;
+
+  @Prop({ default: false })
+  isFlagged: boolean;
+
+  @Prop()
+  flaggedBy?: string;
+
+  @Prop()
+  flaggedAt?: Date;
+
+  @Prop()
+  flagReason?: string;
+
+  @Prop({ default: false })
+  isHidden: boolean;
+
+  @Prop()
+  hiddenBy?: string;
+
+  @Prop()
+  hiddenAt?: Date;
 }
 
 export const PostSchema = SchemaFactory.createForClass(Post);

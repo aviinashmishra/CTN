@@ -11,8 +11,23 @@ import { PostCard } from '@/components/post/PostCard'
 import { CreatePostModal } from '@/components/post/CreatePostModal'
 import { PostSkeleton } from '@/components/post/PostSkeleton'
 
+interface CollegeFeedData {
+  college: {
+    id: string
+    name: string
+    logoUrl?: string
+  }
+  posts: any[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
 export default function CollegePage() {
-  const { user, college } = useAuthStore()
+  const { user } = useAuthStore()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [page, setPage] = useState(1)
 
@@ -23,7 +38,7 @@ export default function CollegePage() {
     user.role === 'ADMIN'
   )
 
-  const { data, isLoading, refetch, error } = useQuery({
+  const { data, isLoading, refetch, error } = useQuery<CollegeFeedData>({
     queryKey: ['college-feed', user?.collegeId, page],
     queryFn: async () => {
       if (!user?.collegeId) {
@@ -32,7 +47,7 @@ export default function CollegePage() {
       const response = await api.get(`/posts/college/${user.collegeId}?page=${page}&limit=20`)
       return response.data
     },
-    enabled: hasCollegeAccess && !!user?.collegeId,
+    enabled: Boolean(hasCollegeAccess && user?.collegeId),
   })
 
   const handlePostCreated = () => {
@@ -141,7 +156,7 @@ export default function CollegePage() {
               <PostSkeleton />
               <PostSkeleton />
             </>
-          ) : data?.posts?.length > 0 ? (
+          ) : data?.posts && data.posts.length > 0 ? (
             data.posts.map((post: any, index: number) => (
               <motion.div
                 key={post.id}

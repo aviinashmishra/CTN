@@ -125,4 +125,29 @@ export class PostController {
   ) {
     return await this.postService.reportComment(req.user.sub, commentId, reason);
   }
+
+  // Moderation endpoints for college posts
+  @Post(':id/flag')
+  @UseGuards(JwtAuthGuard)
+  async flagCollegePost(
+    @Request() req,
+    @Param('id') postId: string,
+    @Body('reason') reason: string,
+  ) {
+    return await this.postService.flagCollegePost(req.user.sub, postId, reason);
+  }
+
+  @Post(':id/hide')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async hideCollegePost(@Request() req, @Param('id') postId: string) {
+    return await this.postService.hideCollegePost(req.user.sub, postId);
+  }
+
+  @Post(':id/unhide')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async unhideCollegePost(@Request() req, @Param('id') postId: string) {
+    return await this.postService.unhideCollegePost(req.user.sub, postId);
+  }
 }

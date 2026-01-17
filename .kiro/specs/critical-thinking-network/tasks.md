@@ -297,7 +297,7 @@ Key features include:
     - **Property 32: Payment does not grant college panel access**
     - **Validates: Requirements 6.9**
 
-  - [ ] 10.11 Build Resource Browser frontend component
+  - [x] 10.11 Build Resource Browser frontend component
     - Create college selection dropdown
     - Create hierarchical folder navigation UI
     - Display file metadata with lock indicators
@@ -333,12 +333,12 @@ Key features include:
     - **Property 35: Moderator college restriction**
     - **Validates: Requirements 7.5, 7.6**
 
-  - [ ] 12.6 Add moderation flags for college panel
+  - [x] 12.6 Add moderation flags for college panel
     - Add moderation actions to college posts (flag, hide)
     - Restrict moderation to moderator's college
     - _Requirements: 7.4_
 
-  - [ ] 12.7 Write property test for moderator permission boundaries
+  - [x] 12.7 Write property test for moderator permission boundaries
     - **Property 36: Moderator permission boundaries**
     - **Validates: Requirements 7.7**
 

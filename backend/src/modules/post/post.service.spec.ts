@@ -13,6 +13,7 @@ import { Report, ReportDocument } from '@/schemas/report.schema';
 import { User, UserRole } from '@/entities/user.entity';
 import { UserProfile } from '@/entities/user-profile.entity';
 import { College } from '@/entities/college.entity';
+import { Moderator } from '@/entities/moderator.entity';
 
 describe('PostService', () => {
   let service: PostService;
@@ -23,6 +24,7 @@ describe('PostService', () => {
   let userRepository: Repository<User>;
   let userProfileRepository: Repository<UserProfile>;
   let collegeRepository: Repository<College>;
+  let moderatorRepository: Repository<Moderator>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -125,6 +127,14 @@ describe('PostService', () => {
             save: jest.fn(),
           },
         },
+        {
+          provide: getRepositoryToken(Moderator),
+          useValue: {
+            findOne: jest.fn(),
+            find: jest.fn(),
+            save: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -139,6 +149,9 @@ describe('PostService', () => {
     );
     collegeRepository = module.get<Repository<College>>(
       getRepositoryToken(College),
+    );
+    moderatorRepository = module.get<Repository<Moderator>>(
+      getRepositoryToken(Moderator),
     );
   });
 
@@ -2267,6 +2280,258 @@ describe('PostService', () => {
               expect(post.collegeId).toBe(testData.collegeAId);
               expect(post.collegeId).not.toBe(testData.collegeBId);
             });
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+  });
+
+  // Feature: critical-thinking-network, Property 36: Moderator permission boundaries
+  describe('Property 36: Moderator permission boundaries', () => {
+    it('should restrict moderators to only moderate posts from their assigned college', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.record({
+            moderatorId: fc.uuid(),
+            moderatorUsername: fc.string({ minLength: 3, maxLength: 30 }).filter(s => /^[a-zA-Z0-9_-]+$/.test(s)),
+            assignedCollegeId: fc.uuid(),
+            otherCollegeId: fc.uuid(),
+            postId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+            flagReason: fc.string({ minLength: 5, maxLength: 200 }),
+          }).filter(data => data.assignedCollegeId !== data.otherCollegeId), // Ensure different colleges
+          async (testData) => {
+            // Mock moderator user
+            const mockModerator = {
+              id: testData.moderatorId,
+              username: testData.moderatorUsername,
+              displayName: testData.moderatorUsername,
+              role: 'MODERATOR',
+              college: { id: testData.assignedCollegeId, name: 'Assigned College' },
+            };
+            jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockModerator as any);
+
+            // Test 1: Moderator can flag posts from their assigned college
+            const mockAssignedCollegePost = {
+              _id: new Types.ObjectId(testData.postId),
+              collegeId: testData.assignedCollegeId,
+              panelType: 'COLLEGE',
+              isDeleted: false,
+            };
+            jest.spyOn(postModel, 'findById').mockReturnValue({
+              exec: jest.fn().mockResolvedValue(mockAssignedCollegePost),
+            } as any);
+
+            // Mock moderator assignment exists for assigned college
+            const mockModeratorAssignment = {
+              id: 'assignment-id',
+              userId: testData.moderatorId,
+              collegeId: testData.assignedCollegeId,
+            };
+            jest.spyOn(moderatorRepository, 'findOne').mockResolvedValue(mockModeratorAssignment as any);
+
+            // Mock post update
+            jest.spyOn(postModel, 'findByIdAndUpdate').mockResolvedValue(mockAssignedCollegePost as any);
+
+            // Should successfully flag post from assigned college
+            const flagResult = await service.flagCollegePost(testData.moderatorId, testData.postId, testData.flagReason);
+            expect(flagResult).toBeDefined();
+            expect(flagResult.message).toBe('Post flagged successfully');
+
+            // Test 2: Moderator cannot flag posts from other colleges
+            const mockOtherCollegePost = {
+              _id: new Types.ObjectId(testData.postId),
+              collegeId: testData.otherCollegeId,
+              panelType: 'COLLEGE',
+              isDeleted: false,
+            };
+            jest.spyOn(postModel, 'findById').mockReturnValue({
+              exec: jest.fn().mockResolvedValue(mockOtherCollegePost),
+            } as any);
+
+            // Mock no moderator assignment for other college
+            jest.spyOn(moderatorRepository, 'findOne').mockResolvedValue(null);
+
+            // Should fail to flag post from other college
+            await expect(
+              service.flagCollegePost(testData.moderatorId, testData.postId, testData.flagReason)
+            ).rejects.toThrow('Moderators can only flag posts from their assigned college');
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+
+    it('should restrict moderators to only hide posts from their assigned college', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.record({
+            moderatorId: fc.uuid(),
+            moderatorUsername: fc.string({ minLength: 3, maxLength: 30 }).filter(s => /^[a-zA-Z0-9_-]+$/.test(s)),
+            assignedCollegeId: fc.uuid(),
+            otherCollegeId: fc.uuid(),
+            postId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+          }).filter(data => data.assignedCollegeId !== data.otherCollegeId), // Ensure different colleges
+          async (testData) => {
+            // Mock moderator user
+            const mockModerator = {
+              id: testData.moderatorId,
+              username: testData.moderatorUsername,
+              displayName: testData.moderatorUsername,
+              role: 'MODERATOR',
+              college: { id: testData.assignedCollegeId, name: 'Assigned College' },
+            };
+            jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockModerator as any);
+
+            // Test 1: Moderator can hide posts from their assigned college
+            const mockAssignedCollegePost = {
+              _id: new Types.ObjectId(testData.postId),
+              collegeId: testData.assignedCollegeId,
+              panelType: 'COLLEGE',
+              isDeleted: false,
+            };
+            jest.spyOn(postModel, 'findById').mockReturnValue({
+              exec: jest.fn().mockResolvedValue(mockAssignedCollegePost),
+            } as any);
+
+            // Mock moderator assignment exists for assigned college
+            const mockModeratorAssignment = {
+              id: 'assignment-id',
+              userId: testData.moderatorId,
+              collegeId: testData.assignedCollegeId,
+            };
+            jest.spyOn(moderatorRepository, 'findOne').mockResolvedValue(mockModeratorAssignment as any);
+
+            // Mock post update
+            jest.spyOn(postModel, 'findByIdAndUpdate').mockResolvedValue(mockAssignedCollegePost as any);
+
+            // Should successfully hide post from assigned college
+            const hideResult = await service.hideCollegePost(testData.moderatorId, testData.postId);
+            expect(hideResult).toBeDefined();
+            expect(hideResult.message).toBe('Post hidden successfully');
+
+            // Test 2: Moderator cannot hide posts from other colleges
+            const mockOtherCollegePost = {
+              _id: new Types.ObjectId(testData.postId),
+              collegeId: testData.otherCollegeId,
+              panelType: 'COLLEGE',
+              isDeleted: false,
+            };
+            jest.spyOn(postModel, 'findById').mockReturnValue({
+              exec: jest.fn().mockResolvedValue(mockOtherCollegePost),
+            } as any);
+
+            // Mock no moderator assignment for other college
+            jest.spyOn(moderatorRepository, 'findOne').mockResolvedValue(null);
+
+            // Should fail to hide post from other college
+            await expect(
+              service.hideCollegePost(testData.moderatorId, testData.postId)
+            ).rejects.toThrow('Moderators can only hide posts from their assigned college');
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+
+    it('should prevent non-moderators from using moderation actions', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.record({
+            userId: fc.uuid(),
+            username: fc.string({ minLength: 3, maxLength: 30 }).filter(s => /^[a-zA-Z0-9_-]+$/.test(s)),
+            role: fc.constantFrom('GENERAL_USER', 'COLLEGE_USER'),
+            collegeId: fc.uuid(),
+            postId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+            flagReason: fc.string({ minLength: 5, maxLength: 200 }),
+          }),
+          async (testData) => {
+            // Mock non-moderator user
+            const mockUser = {
+              id: testData.userId,
+              username: testData.username,
+              displayName: testData.username,
+              role: testData.role,
+              college: { id: testData.collegeId, name: 'Test College' },
+            };
+            jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockUser as any);
+
+            // Mock college post
+            const mockPost = {
+              _id: new Types.ObjectId(testData.postId),
+              collegeId: testData.collegeId,
+              panelType: 'COLLEGE',
+              isDeleted: false,
+            };
+            jest.spyOn(postModel, 'findById').mockReturnValue({
+              exec: jest.fn().mockResolvedValue(mockPost),
+            } as any);
+
+            // Should fail to flag post (not a moderator)
+            await expect(
+              service.flagCollegePost(testData.userId, testData.postId, testData.flagReason)
+            ).rejects.toThrow('Only moderators can flag posts');
+
+            // Should fail to hide post (not a moderator)
+            await expect(
+              service.hideCollegePost(testData.userId, testData.postId)
+            ).rejects.toThrow('Only moderators can hide posts');
+
+            // Should fail to unhide post (not a moderator)
+            await expect(
+              service.unhideCollegePost(testData.userId, testData.postId)
+            ).rejects.toThrow('Only moderators can unhide posts');
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+
+    it('should only allow moderation of college panel posts', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.record({
+            moderatorId: fc.uuid(),
+            moderatorUsername: fc.string({ minLength: 3, maxLength: 30 }).filter(s => /^[a-zA-Z0-9_-]+$/.test(s)),
+            collegeId: fc.uuid(),
+            nationalPostId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+            flagReason: fc.string({ minLength: 5, maxLength: 200 }),
+          }),
+          async (testData) => {
+            // Mock moderator user
+            const mockModerator = {
+              id: testData.moderatorId,
+              username: testData.moderatorUsername,
+              displayName: testData.moderatorUsername,
+              role: 'MODERATOR',
+              college: { id: testData.collegeId, name: 'Test College' },
+            };
+            jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockModerator as any);
+
+            // Mock national panel post (not college panel)
+            const mockNationalPost = {
+              _id: new Types.ObjectId(testData.nationalPostId),
+              panelType: 'NATIONAL', // Not a college post
+              isDeleted: false,
+            };
+            jest.spyOn(postModel, 'findById').mockReturnValue({
+              exec: jest.fn().mockResolvedValue(mockNationalPost),
+            } as any);
+
+            // Should fail to flag national post (only college posts can be moderated)
+            await expect(
+              service.flagCollegePost(testData.moderatorId, testData.nationalPostId, testData.flagReason)
+            ).rejects.toThrow('Can only moderate college panel posts');
+
+            // Should fail to hide national post
+            await expect(
+              service.hideCollegePost(testData.moderatorId, testData.nationalPostId)
+            ).rejects.toThrow('Can only moderate college panel posts');
+
+            // Should fail to unhide national post
+            await expect(
+              service.unhideCollegePost(testData.moderatorId, testData.nationalPostId)
+            ).rejects.toThrow('Can only moderate college panel posts');
           },
         ),
         { numRuns: 100 },

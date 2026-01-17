@@ -15,6 +15,7 @@ import { Report, ReportDocument } from '@/schemas/report.schema';
 import { User } from '@/entities/user.entity';
 import { UserProfile } from '@/entities/user-profile.entity';
 import { College } from '@/entities/college.entity';
+import { Moderator } from '@/entities/moderator.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
@@ -28,6 +29,7 @@ export class PostService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(UserProfile) private userProfileRepository: Repository<UserProfile>,
     @InjectRepository(College) private collegeRepository: Repository<College>,
+    @InjectRepository(Moderator) private moderatorRepository: Repository<Moderator>,
   ) {}
 
   // National Panel Posts
@@ -110,8 +112,9 @@ export class PostService {
 
   async getCollegeFeed(collegeId: string, page: number = 1, limit: number = 20, userId?: string) {
     // Verify user has access to this college panel
+    let user: any = null;
     if (userId) {
-      const user = await this.userRepository.findOne({
+      user = await this.userRepository.findOne({
         where: { id: userId },
         relations: ['college'],
       });
@@ -139,22 +142,35 @@ export class PostService {
 
     const skip = (page - 1) * limit;
 
+    // Build query - hide hidden posts from regular users, but show to moderators
+    let query: any = { 
+      panelType: 'COLLEGE', 
+      collegeId: collegeId,
+      isDeleted: false 
+    };
+
+    // Check if user is a moderator for this college
+    let isModerator = false;
+    if (userId && user && user.role === 'MODERATOR') {
+      const moderatorAssignment = await this.moderatorRepository.findOne({
+        where: { userId, collegeId }
+      });
+      isModerator = !!moderatorAssignment;
+    }
+
+    // Hide hidden posts from non-moderators
+    if (!isModerator && user && user.role !== 'ADMIN') {
+      query.isHidden = { $ne: true };
+    }
+
     const posts = await this.postModel
-      .find({ 
-        panelType: 'COLLEGE', 
-        collegeId: collegeId,
-        isDeleted: false 
-      })
+      .find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .exec();
 
-    const total = await this.postModel.countDocuments({
-      panelType: 'COLLEGE',
-      collegeId: collegeId,
-      isDeleted: false,
-    });
+    const total = await this.postModel.countDocuments(query);
 
     const formattedPosts = await Promise.all(
       posts.map((post) => this.formatPost(post, userId)),
@@ -420,6 +436,140 @@ export class PostService {
     return { message: 'Report submitted successfully' };
   }
 
+  // Moderation methods for college posts
+  async flagCollegePost(moderatorUserId: string, postId: string, reason: string) {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post ID');
+    }
+
+    const post = await this.postModel.findById(postId).exec();
+    if (!post || post.isDeleted) {
+      throw new NotFoundException('Post not found');
+    }
+
+    // Verify post is from college panel
+    if (post.panelType !== 'COLLEGE') {
+      throw new ForbiddenException('Can only moderate college panel posts');
+    }
+
+    // Verify moderator permissions
+    const moderator = await this.userRepository.findOne({
+      where: { id: moderatorUserId },
+      relations: ['college']
+    });
+
+    if (!moderator || moderator.role !== 'MODERATOR') {
+      throw new ForbiddenException('Only moderators can flag posts');
+    }
+
+    // Check if moderator is assigned to the post's college
+    const moderatorAssignment = await this.moderatorRepository.findOne({
+      where: { userId: moderatorUserId, collegeId: post.collegeId }
+    });
+
+    if (!moderatorAssignment) {
+      throw new ForbiddenException('Moderators can only flag posts from their assigned college');
+    }
+
+    // Flag the post
+    await this.postModel.findByIdAndUpdate(postId, {
+      isFlagged: true,
+      flaggedBy: moderatorUserId,
+      flaggedAt: new Date(),
+      flagReason: reason,
+    });
+
+    return { message: 'Post flagged successfully' };
+  }
+
+  async hideCollegePost(moderatorUserId: string, postId: string) {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post ID');
+    }
+
+    const post = await this.postModel.findById(postId).exec();
+    if (!post || post.isDeleted) {
+      throw new NotFoundException('Post not found');
+    }
+
+    // Verify post is from college panel
+    if (post.panelType !== 'COLLEGE') {
+      throw new ForbiddenException('Can only moderate college panel posts');
+    }
+
+    // Verify moderator permissions
+    const moderator = await this.userRepository.findOne({
+      where: { id: moderatorUserId },
+      relations: ['college']
+    });
+
+    if (!moderator || moderator.role !== 'MODERATOR') {
+      throw new ForbiddenException('Only moderators can hide posts');
+    }
+
+    // Check if moderator is assigned to the post's college
+    const moderatorAssignment = await this.moderatorRepository.findOne({
+      where: { userId: moderatorUserId, collegeId: post.collegeId }
+    });
+
+    if (!moderatorAssignment) {
+      throw new ForbiddenException('Moderators can only hide posts from their assigned college');
+    }
+
+    // Hide the post (soft delete)
+    await this.postModel.findByIdAndUpdate(postId, {
+      isHidden: true,
+      hiddenBy: moderatorUserId,
+      hiddenAt: new Date(),
+    });
+
+    return { message: 'Post hidden successfully' };
+  }
+
+  async unhideCollegePost(moderatorUserId: string, postId: string) {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post ID');
+    }
+
+    const post = await this.postModel.findById(postId).exec();
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    // Verify post is from college panel
+    if (post.panelType !== 'COLLEGE') {
+      throw new ForbiddenException('Can only moderate college panel posts');
+    }
+
+    // Verify moderator permissions
+    const moderator = await this.userRepository.findOne({
+      where: { id: moderatorUserId },
+      relations: ['college']
+    });
+
+    if (!moderator || moderator.role !== 'MODERATOR') {
+      throw new ForbiddenException('Only moderators can unhide posts');
+    }
+
+    // Check if moderator is assigned to the post's college
+    const moderatorAssignment = await this.moderatorRepository.findOne({
+      where: { userId: moderatorUserId, collegeId: post.collegeId }
+    });
+
+    if (!moderatorAssignment) {
+      throw new ForbiddenException('Moderators can only unhide posts from their assigned college');
+    }
+
+    // Unhide the post
+    await this.postModel.findByIdAndUpdate(postId, {
+      isHidden: false,
+      hiddenBy: null,
+      hiddenAt: null,
+    });
+
+    return { message: 'Post unhidden successfully' };
+  }
+
   // Helper methods
   private async formatPost(post: PostDocument, userId?: string) {
     const isLiked = userId
@@ -440,6 +590,9 @@ export class PostService {
       commentCount: post.commentCount,
       reportCount: post.reportCount,
       isLiked,
+      isFlagged: post.isFlagged || false,
+      isHidden: post.isHidden || false,
+      flagReason: post.flagReason,
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
     };

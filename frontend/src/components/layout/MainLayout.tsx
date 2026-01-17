@@ -13,7 +13,8 @@ import {
   LogOut,
   Sparkles,
   Menu,
-  X
+  X,
+  Shield
 } from 'lucide-react'
 import { useAuthStore, UserRole } from '@/store/authStore'
 import { useState } from 'react'
@@ -46,6 +47,12 @@ export function MainLayout({ children }: MainLayoutProps) {
       href: '/resources', 
       icon: BookOpen, 
       show: user?.role === UserRole.COLLEGE_USER || user?.role === UserRole.MODERATOR || user?.role === UserRole.ADMIN 
+    },
+    { 
+      name: 'Moderator', 
+      href: '/moderator', 
+      icon: Shield, 
+      show: user?.role === UserRole.MODERATOR || user?.role === UserRole.ADMIN 
     },
     { name: 'Search', href: '/search', icon: Search, show: true },
   ]

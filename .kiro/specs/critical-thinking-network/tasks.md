@@ -342,7 +342,7 @@ Key features include:
     - **Property 36: Moderator permission boundaries**
     - **Validates: Requirements 7.7**
 
-  - [ ] 12.8 Build Moderator Dashboard frontend
+  - [x] 12.8 Build Moderator Dashboard frontend
     - Create resource upload form with hierarchy selection
     - Create college panel moderation interface
     - Add college-specific controls

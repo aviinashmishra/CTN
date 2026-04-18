@@ -4,7 +4,7 @@
   "description": "Backend API for Critical Thinking Network",
   "private": true,
   "scripts": {
-    "build": "nest build",
+    "build": "npm install --include=dev && npx nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
